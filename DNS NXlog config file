@@ -1,0 +1,96 @@
+## This configuration will take the DNS logs that are being generated to log on
+## C:\DNSLogs\dns.log file and send it to Stellar Cyber Sensor on port 5599
+## Customer need to change DNS log file path and sensor IP during configuration. 
+
+
+define ROOT C:\Program Files\nxlog
+#define ROOT C:\Program Files (x86)\nxlog
+
+define CERTDIR  %ROOT%\cert
+define CONFDIR  %ROOT%\conf\nxlog.d
+define LOGDIR   %ROOT%\data
+
+define LOGFILE  %LOGDIR%\nxlog.log
+LogFile %LOGFILE%
+
+Moduledir %ROOT%\modules
+CacheDir %ROOT%\data
+Pidfile %ROOT%\data\nxlog.pid
+SpoolDir %ROOT%\data
+LogFile %ROOT%\data\nxlog.log
+
+
+<Extension _syslog>
+    Module  xm_syslog
+</Extension>
+define EVENT_REGEX /(?x)(?<Date>\d+(?:\/\d+){2})\s \
+                   (?<Time>\d+(?:\:\d+){2}\s\w+)\s \
+                   (?<ThreadId>\w+)\s+ \
+                   (?<Context>\w+)\s+ \
+                   (?<InternalPacketIdentifier>[[:xdigit:]]+)\s+ \
+                   (?<Protocol>\w+)\s+ \
+                   (?<SendReceiveIndicator>\w+)\s \
+                   (?<RemoteIP>[[:xdigit:].:]+)\s+ \
+                   (?<Xid>[[:xdigit:]]+)\s \
+                   (?<QueryType>\s|R)\s \
+                   (?<Opcode>[A-Z]|\?)\s \
+                   (?<QFlags>\[(.*?)\])\s+ \
+                   (?<QuestionType>\w+)\s+ \
+                   (?<QuestionName>.*)\s+  \
+                   (?<LogInfo>.+)\s+.+=\s \
+                   (?<Socket>\d+)\s+ Remote\s+ addr\s \
+                   (?<RemoteAddr>.+),\sport\s \
+                   (?<PortNum>\d+)\s+Time\sQuery= \
+                   (?<TimeQuery>\d+),\sQueued= \
+                   (?<Queued>\d+),\sExpire= \
+                   (?<Expire>\d+)\s+.+\( \
+                   (?<BufLen>\d+)\)\s+.+\( \
+                   (?<MsgLen>\d+)\)\s+Message:\s+ \
+                   (?<Message>(?s).*)/
+
+define HEADER_REGEX /(?x)(?<Date>\d+(?:\/\d+){2})\s \
+                    (?<Time>\d+(?:\:\d+){2}\s\w+)\s \
+                    (?<ThreadId>\w+)\s+ \
+                    (?<Context>\w+)\s+ \
+                    (?<InternalPacketIdentifier>[[:xdigit:]]+)\s+ \
+                    (?<Protocol>\w+)\s+ \
+                    (?<SendReceiveIndicator>\w+)\s \
+                    (?<RemoteIP>[[:xdigit:].:]+)\s+ \
+                    (?<Xid>[[:xdigit:]]+)\s \
+                    (?<QueryType>\s|R)\s \
+                    (?<Opcode>[A-Z]|\?)\s \
+                    (?<QFlags>\[(.*?)\])\s+ \
+                    (?<QuestionType>\w+)\s+ \
+                    (?<QuestionName>.*)/
+
+<Extension multiline>
+    Module      xm_multiline
+    HeaderLine  %HEADER_REGEX%
+</Extension>
+
+<Input eventlog>
+    Module      im_file
+    File        'C:\DNSLogs\dns.log'
+    ##change the file path and name
+    InputType   multiline
+    <Exec>
+        if $raw_event =~ %EVENT_REGEX%
+        {
+            $EventTime  = parsedate($Date + " " + $Time);
+            delete($Date);
+            delete($Time);
+        }
+    </Exec>
+</Input>
+
+<Output udp>
+Module om_udp
+Host 1.1.1.1
+##change IP 1.1.1.1 to the Sensor IP
+Port 5599
+Exec to_syslog_bsd();
+</Output>
+
+<Route 1>
+     Path        eventlog => udp
+</Route>
